@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
+  "name": "hill-climbing-skills",
+  "description": "Skills for iterative hill-climbing projects: optimize a metric or refine artifacts under repeated review.",
+  "owner": {
+    "name": "ntt123"
+  },
+  "plugins": [
+    {
+      "name": "hillclimb",
+      "source": "./",
+      "description": "Five role skills (onboard, execute, verify, brainstorm, loop) plus the hillclimb orchestrator that chains them end-to-end."
+    }
+  ]
+}

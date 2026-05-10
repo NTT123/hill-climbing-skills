@@ -1,0 +1,1331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hill-Climb Ledger</title>
+<style>
+  /* ---------------------------------------------------------------
+     OBSERVATORY - engineering logbook
+     dark editorial · phosphor amber on warm-tinted midnight
+     -------------------------------------------------------------- */
+
+  :root {
+    /* Color tokens (chart JS reads --bg, --panel, --rule, --rule-2,
+       --fg, --fg-hi, --muted, --faint, --accent, --pass, --fail,
+       --mauve, --teal, --display, --mono) */
+    --bg:        #0c0e12;
+    --bg-deep:   #07080b;
+    --panel:     #14171d;
+    --panel-2:   #1b1f27;
+    --rule:      #232932;
+    --rule-2:    #3b4452;
+    --fg:        #e2dac6;
+    --fg-hi:     #f5ecd5;
+    --muted:     #8a8a82;
+    --faint:     #565650;
+
+    --accent:    #f0a830;
+    --accent-soft: rgba(240,168,48,0.10);
+
+    --pass:      #6fc97a;
+    --pass-soft: rgba(111,201,122,0.12);
+    --fail:      #ec5b5b;
+    --fail-soft: rgba(236,91,91,0.12);
+    --mauve:     #b894d8;
+    --mauve-soft:rgba(184,148,216,0.12);
+    --teal:      #5cc7e8;
+    --teal-soft: rgba(92,199,232,0.12);
+
+    /* type stack - fully system, no external loads */
+    --display:   "New York","Iowan Old Style","Charter","Palatino Linotype",Palatino,"Book Antiqua","PT Serif",Georgia,serif;
+    --mono:      "JetBrains Mono","SF Mono",ui-monospace,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+
+  *,*::before,*::after { box-sizing: border-box; }
+  html,body { margin: 0; padding: 0; }
+
+  body {
+    background:
+      radial-gradient(1100px 520px at 8% -8%, rgba(240,168,48,0.05), transparent 60%),
+      radial-gradient(900px 460px at 110% 4%, rgba(92,199,232,0.035), transparent 65%),
+      var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.55;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "ss01","tnum","cv02","cv11";
+  }
+
+  /* faint film grain so the dark panel breathes */
+  body::before {
+    content: "";
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    opacity: 0.06;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 0.9  0 0 0 0 0.7  0 0 0 0.65 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+
+  ::selection { background: var(--accent); color: var(--bg); }
+
+  #ledger {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: clamp(20px,3.5vw,52px) clamp(20px,3vw,48px) 56px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ============= MASTHEAD ============= */
+  .masthead {
+    padding-bottom: clamp(22px,3vw,30px);
+    margin-bottom: clamp(28px,4vw,44px);
+    border-bottom: 1px solid var(--rule-2);
+    box-shadow: 0 1px 0 var(--rule);
+    position: relative;
+  }
+
+  .topline {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 24px;
+    margin-bottom: 28px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed var(--rule);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .topline > span:first-child {
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 0.36em;
+  }
+  .folio {
+    color: var(--faint);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .name {
+    margin: 0 0 18px;
+    font-family: var(--display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(28px,4.2vw,52px);
+    line-height: 1.06;
+    letter-spacing: -0.015em;
+    color: var(--fg-hi);
+    font-feature-settings: "liga","dlig","kern","onum";
+  }
+  .name::first-letter { color: var(--accent); }
+
+  .objective-line {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .objective-line .meta { color: var(--muted); }
+  .objective-line .arrow {
+    display: inline-block;
+    margin: 0 6px;
+    color: var(--accent);
+    font-size: 14px;
+    transform: translateY(1px);
+  }
+
+  /* ============= SECTION HEADS ============= */
+  .section-head {
+    margin: clamp(40px,5vw,60px) 0 22px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--rule);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: baseline;
+    gap: 18px;
+    font-weight: normal;
+    position: relative;
+  }
+  .section-head::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -4px;
+    height: 1px;
+    background: var(--rule);
+    opacity: 0.5;
+  }
+  .section-head .num {
+    font-family: var(--display);
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(32px,4.5vw,52px);
+    line-height: 0.9;
+    letter-spacing: -0.025em;
+    color: var(--accent);
+    min-width: 1.6ch;
+    font-feature-settings: "onum","lnum" 0;
+  }
+  .section-head .title {
+    font-family: var(--display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(20px,2.4vw,28px);
+    color: var(--fg-hi);
+    letter-spacing: -0.005em;
+  }
+  .section-head .aside {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .chart-section .section-head { margin-top: 0; }
+
+  /* ============= CHART ============= */
+  .chart-wrap {
+    position: relative;
+    margin: 12px 0 14px;
+    padding: 18px 6px 8px;
+    background:
+      linear-gradient(180deg, var(--panel) 0%, var(--bg) 100%),
+      var(--panel);
+    border: 1px solid var(--rule-2);
+    border-radius: 2px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.02), 0 12px 30px -20px rgba(0,0,0,0.7);
+  }
+  /* instrument frame: visible corner brackets */
+  .chart-wrap::before, .chart-wrap::after {
+    content: "";
+    position: absolute;
+    width: 22px; height: 22px;
+    border: 1.5px solid var(--accent);
+    pointer-events: none;
+    opacity: 0.7;
+  }
+  .chart-wrap::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+  .chart-wrap::after  { top: -1px; right: -1px; border-left: 0; border-bottom: 0; }
+
+  canvas#chart { display: block; width: 100%; height: 420px; }
+
+  .chart-empty {
+    text-align: center;
+    color: var(--muted);
+    font-style: italic;
+    font-family: var(--display);
+    font-size: 18px;
+    padding: 90px 0;
+  }
+
+  .chart-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 10px 6px 0;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .chart-meta > span { display: inline-flex; align-items: center; gap: 7px; }
+  .swatch {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    vertical-align: middle;
+  }
+  .swatch.pass { background: var(--pass); box-shadow: 0 0 8px rgba(111,201,122,0.45); }
+  .swatch.fail { background: transparent; border: 1.5px solid var(--fail); }
+  .swatch.best { background: var(--accent); box-shadow: 0 0 10px rgba(240,168,48,0.55); }
+  .swatch.target,
+  .swatch.baseline {
+    width: 18px; height: 0; border-radius: 0;
+    border-top: 2px dashed var(--accent);
+  }
+  .swatch.baseline { border-top-color: var(--muted); border-top-style: dashed; border-top-width: 1.5px; }
+
+  /* ============= STATS GRID ============= */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    margin-top: 26px;
+    background: var(--panel);
+    border: 1px solid var(--rule-2);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.02), 0 8px 20px -16px rgba(0,0,0,0.6);
+  }
+  .stat {
+    padding: 18px 22px 16px;
+    border-right: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+    min-height: 96px;
+  }
+  .stat:last-of-type { border-right: 0; }
+  .stat::before {
+    content: "";
+    position: absolute; left: 22px; top: 0;
+    width: 22px; height: 1px;
+    background: var(--accent);
+    opacity: 0.6;
+  }
+  .stat.best::before { background: var(--accent); opacity: 1; height: 2px; }
+
+  .stat .label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .stat .value {
+    font-family: var(--display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 36px;
+    line-height: 1;
+    color: var(--fg-hi);
+    letter-spacing: -0.025em;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .stat .denom {
+    font-family: var(--display);
+    font-style: italic;
+    font-weight: 300;
+    font-size: 22px;
+    color: var(--faint);
+    letter-spacing: -0.01em;
+    margin-left: 2px;
+  }
+  .stat .sub {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--faint);
+    letter-spacing: 0.04em;
+    margin-top: auto;
+  }
+  .stat.best {
+    background:
+      linear-gradient(180deg, rgba(240,168,48,0.10) 0%, transparent 70%),
+      var(--panel);
+  }
+  .stat.best .value { color: var(--accent); text-shadow: 0 0 14px rgba(240,168,48,0.35); }
+  .stat .delta {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    margin-top: auto;
+  }
+  .delta.better { color: var(--pass); }
+  .delta.worse  { color: var(--fail); }
+  .delta.flat   { color: var(--muted); }
+
+  /* ============= TARGET BAR ============= */
+  .target-bar {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 22px;
+    border-top: 1px solid var(--rule);
+    background: var(--panel-2);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .target-bar .track {
+    height: 8px;
+    background: var(--bg-deep);
+    border: 1px solid var(--rule-2);
+    border-radius: 1px;
+    overflow: hidden;
+    position: relative;
+  }
+  .target-bar .track::after {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: repeating-linear-gradient(
+      90deg, transparent 0, transparent 9.9%,
+      rgba(255,255,255,0.05) 9.9%, rgba(255,255,255,0.05) 10%);
+    pointer-events: none;
+  }
+  .target-bar .fill {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, var(--pass) 0%, var(--accent) 100%);
+    box-shadow: 0 0 8px rgba(240,168,48,0.45);
+  }
+  .target-bar .pct {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0;
+    min-width: 4ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ============= TWO-COL ============= */
+  .two-col {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+    gap: clamp(28px,3vw,44px);
+    margin-top: 4px;
+  }
+  @media (max-width: 1080px) {
+    .two-col { grid-template-columns: minmax(0,1fr); }
+  }
+
+  /* ============= ROW LISTS ============= */
+  .rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--rule);
+  }
+  .rows .empty {
+    padding: 24px 0;
+    color: var(--muted);
+    font-style: italic;
+    font-family: var(--display);
+  }
+
+  /* ----- IDEAS ----- */
+  .ideas-section .row {
+    display: grid;
+    grid-template-columns: 60px minmax(0,1fr) auto;
+    grid-template-areas:
+      "id title marks"
+      ".  desc  desc";
+    column-gap: 14px;
+    row-gap: 6px;
+    padding: 14px 0 16px;
+    border-bottom: 1px solid var(--rule);
+    align-items: baseline;
+    transition: background 120ms ease;
+  }
+  .ideas-section .row:hover {
+    background: linear-gradient(90deg, rgba(240,168,48,0.04), transparent 70%);
+  }
+  .ideas-section .row .id {
+    grid-area: id;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+  }
+  .ideas-section .row .title {
+    grid-area: title;
+    font-family: var(--display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 16.5px;
+    line-height: 1.32;
+    color: var(--fg-hi);
+    letter-spacing: -0.005em;
+    overflow-wrap: anywhere;
+  }
+  .ideas-section .row .marks {
+    grid-area: marks;
+    display: flex;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    align-self: start;
+  }
+  .ideas-section .row .desc {
+    grid-area: desc;
+    position: relative;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.55;
+    color: var(--muted);
+    margin-top: 4px;
+    max-height: 7.4em;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent 100%);
+            mask-image: linear-gradient(180deg, #000 70%, transparent 100%);
+  }
+  .ideas-section .row .desc.expanded {
+    max-height: none;
+    -webkit-mask-image: none;
+            mask-image: none;
+  }
+
+  /* mark chips */
+  .mark { display: inline-flex; align-items: center; }
+  .mark .br { color: var(--faint); }
+  .pr-high     { color: var(--fail);  font-weight: 600; padding: 0 5px; }
+  .pr-medium   { color: var(--accent); padding: 0 5px; }
+  .pr-low      { color: var(--muted); padding: 0 5px; }
+  .st-open        { color: var(--teal);   padding: 0 5px; }
+  .st-in_progress { color: var(--accent); font-weight: 600; padding: 0 5px;
+                    text-shadow: 0 0 8px rgba(240,168,48,0.4); }
+  .st-done        { color: var(--pass);   padding: 0 5px; }
+  .st-abandoned   { color: var(--faint);  padding: 0 5px; text-decoration: line-through; }
+
+  /* ----- RUNS ----- */
+  .runs-section .run {
+    padding: 16px 0 18px;
+    border-bottom: 1px solid var(--rule);
+    transition: background 120ms ease;
+  }
+  .runs-section .run:hover {
+    background: linear-gradient(90deg, rgba(240,168,48,0.03), transparent 70%);
+  }
+  .run-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+  .run .ids {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .run .ids strong {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.05em;
+  }
+
+  .verdict {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 4px 10px 5px;
+    border-radius: 1px;
+    border: 1px solid currentColor;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-deep);
+    white-space: nowrap;
+  }
+  .verdict .score {
+    font-weight: 700;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    margin-left: 4px;
+  }
+  .v-pass         { color: var(--pass);   background: var(--pass-soft); }
+  .v-pass.improved {
+    color: var(--accent);
+    background: linear-gradient(90deg, rgba(240,168,48,0.18), rgba(240,168,48,0.04));
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(240,168,48,0.25), 0 0 18px -4px rgba(240,168,48,0.4);
+  }
+  .v-pass.improved::before {
+    content: "★"; color: var(--accent); margin-right: -2px;
+  }
+  .v-fail         { color: var(--fail);   background: var(--fail-soft); }
+  .v-inconclusive,
+  .v-unverified   { color: var(--muted);  background: var(--panel); border-style: dashed; }
+
+  .run-line {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.55;
+    color: var(--muted);
+    margin: 5px 0;
+    padding-left: 84px;
+    position: relative;
+    max-height: 5.5em;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    -webkit-mask-image: linear-gradient(180deg, #000 75%, transparent 100%);
+            mask-image: linear-gradient(180deg, #000 75%, transparent 100%);
+  }
+  .run-line.expanded,
+  .run-line.notes {
+    max-height: none;
+    -webkit-mask-image: none;
+            mask-image: none;
+  }
+  .run-line .lbl {
+    position: absolute;
+    left: 0; top: 0;
+    width: 72px;
+    text-align: right;
+    font-size: 9.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--faint);
+    padding-top: 1px;
+  }
+  .run-line.plan .lbl    { color: var(--teal); }
+  .run-line.actions .lbl { color: var(--accent); }
+  .run-line.notes .lbl   { color: var(--mauve); }
+  .run-line .act {
+    color: var(--accent);
+    margin: 0 6px 0 4px;
+    opacity: 0.65;
+  }
+  .run-line.notes { color: var(--fg); }
+
+  /* expand/collapse toggle */
+  .toggle {
+    appearance: none;
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    padding: 3px 6px 4px;
+    margin: 0;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 1px;
+    transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  }
+  .toggle:hover {
+    color: var(--fg-hi);
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+  .toggle:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* When collapsed: toggle sits absolutely at bottom-right, on top of fade */
+  .desc:not(.expanded) > .toggle,
+  .run-line:not(.expanded):not(.notes) > .toggle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+  }
+  /* When expanded: toggle flows inline at the end of the text */
+  .desc.expanded > .toggle,
+  .run-line.expanded > .toggle {
+    display: inline-block;
+    margin-left: 8px;
+    vertical-align: baseline;
+  }
+
+  /* ============= VERIFIER ============= */
+  .verifier {
+    display: grid;
+    grid-template-columns: max-content minmax(0,1fr);
+    column-gap: 24px;
+    row-gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--rule-2);
+    border-radius: 2px;
+    padding: 20px 24px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--fg);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+  }
+  .verifier .k {
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-top: 2px;
+    white-space: nowrap;
+  }
+  .verifier .v { color: var(--fg); overflow-wrap: anywhere; min-width: 0; }
+  .verifier code {
+    display: inline-block;
+    background: var(--bg-deep);
+    padding: 4px 10px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.02em;
+  }
+  .verifier .contract {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--rule);
+    font-size: 10.5px;
+    color: var(--faint);
+    letter-spacing: 0.04em;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
+
+  /* ============= LOG ============= */
+  .log {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--rule);
+  }
+  .log-row {
+    display: grid;
+    grid-template-columns: 200px 110px 1fr;
+    gap: 14px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--rule);
+    align-items: baseline;
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+  .log-row:hover { background: linear-gradient(90deg, rgba(240,168,48,0.025), transparent 70%); }
+  .log-row .ts {
+    color: var(--faint);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .log-row .kind {
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    padding: 3px 0;
+    border-radius: 1px;
+    font-weight: 700;
+    text-align: center;
+    border: 1px solid currentColor;
+  }
+  .log-row .summary { color: var(--fg); line-height: 1.5; }
+
+  .k-execute    { color: var(--accent); background: var(--accent-soft); }
+  .k-verify     { color: var(--pass);   background: var(--pass-soft); }
+  .k-brainstorm { color: var(--mauve);  background: var(--mauve-soft); }
+  .k-onboard    { color: var(--teal);   background: var(--teal-soft); }
+  .k-note       { color: var(--muted);  background: var(--panel); }
+
+  /* ============= COLOPHON ============= */
+  .colophon {
+    margin-top: 56px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule-2);
+    box-shadow: 0 -1px 0 var(--rule);
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .colophon em {
+    font-family: var(--display);
+    font-style: italic;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  /* ============= RESPONSIVE ============= */
+  @media (max-width: 880px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .stat:nth-of-type(2) { border-right: 0; }
+    .stat:nth-of-type(1),
+    .stat:nth-of-type(2) { border-bottom: 1px solid var(--rule); }
+    .topline { flex-direction: column; gap: 6px; align-items: flex-start; }
+    .folio { white-space: normal; }
+    .log-row { grid-template-columns: 1fr; gap: 4px; padding: 12px 0; }
+    .log-row .kind { width: max-content; padding: 3px 8px; }
+    .run-line { padding-left: 0; }
+    .run-line .lbl { position: static; display: inline; width: auto; margin-right: 8px; text-align: left; }
+  }
+
+  @media (max-width: 600px) {
+    .section-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      column-gap: 14px;
+      row-gap: 6px;
+    }
+    .section-head .aside { flex-basis: 100%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<article id="ledger">
+
+  <header class="masthead">
+    <div class="topline">
+      <span>HILL-CLIMB &nbsp;·&nbsp; LEDGER</span>
+      <span class="folio" id="folio"></span>
+    </div>
+    <h1 class="name" id="project-name">Hill-Climb Ledger</h1>
+    <p class="objective-line" id="objective-line">awaiting onboarding.</p>
+  </header>
+
+  <section class="chart-section">
+    <h2 class="section-head">
+      <span class="num">01</span>
+      <span class="title">Score over runs</span>
+      <span class="aside" id="chart-aside"></span>
+    </h2>
+    <div class="chart-wrap">
+      <canvas id="chart" width="1200" height="320" aria-label="score over runs"></canvas>
+      <p class="chart-empty" id="chart-empty" style="display:none">awaiting first numerical verification.</p>
+    </div>
+    <div class="chart-meta" id="chart-meta"></div>
+  </section>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="two-col">
+    <section class="ideas-section">
+      <h2 class="section-head">
+        <span class="num">02</span>
+        <span class="title">Ideas</span>
+        <span class="aside" id="ideas-aside"></span>
+      </h2>
+      <ol class="rows" id="ideas"></ol>
+    </section>
+    <section class="runs-section">
+      <h2 class="section-head">
+        <span class="num">03</span>
+        <span class="title">Runs</span>
+        <span class="aside" id="runs-aside"></span>
+      </h2>
+      <ol class="rows" id="runs"></ol>
+    </section>
+  </div>
+
+  <section class="verif-section">
+    <h2 class="section-head">
+      <span class="num">04</span>
+      <span class="title">Verifier</span>
+    </h2>
+    <div class="verifier" id="verifier"></div>
+  </section>
+
+  <section class="log-section">
+    <h2 class="section-head">
+      <span class="num">05</span>
+      <span class="title">Activity log</span>
+      <span class="aside" id="log-aside"></span>
+    </h2>
+    <ol class="log" id="log"></ol>
+  </section>
+
+  <footer class="colophon">
+    <span><em>Self-rendering ledger</em> · no external resources · regenerated on each save.</span>
+    <span id="colophon-ts"></span>
+  </footer>
+
+</article>
+
+<script id="hillclimb-state" type="application/json">
+{}
+</script>
+
+<script>
+
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const fmtTs = (s) => (s || "").replace("T", " ").replace("Z", " UTC");
+  const fmt = (n, d) => {
+    if (n == null || isNaN(n)) return "-";
+    const x = Number(n);
+    if (Math.abs(x) >= 1e6 || (Math.abs(x) < 1e-3 && x !== 0)) return x.toExponential(2);
+    return x.toPrecision(d || 4);
+  };
+  const fmtPct = (n) => (n == null || isNaN(n)) ? "-" : (n >= 0 ? "+" : "") + (n * 100).toFixed(1) + "%";
+
+  let state;
+  try { state = JSON.parse($("hillclimb-state").textContent || "{}"); } catch (e) { state = {}; }
+  const project   = state.project   || {};
+  const objective = project.objective || {};
+  const verifier  = project.verifier  || {};
+  const baseline  = project.baseline  || {};
+  const ideas     = state.ideas || [];
+  const runs      = state.runs  || [];
+  const log       = state.log   || [];
+  const best      = state.best  || {};
+
+  $("project-name").textContent = project.name || "Hill-Climb Ledger";
+  const updated = state.updated_at || state.created_at || "";
+  const folioBits = [];
+  if (state.created_at) folioBits.push("OPENED " + fmtTs(state.created_at));
+  if (updated) folioBits.push("UPDATED " + fmtTs(updated));
+  $("folio").textContent = folioBits.join("  ·  ");
+
+  if (!objective.description) {
+    $("objective-line").innerHTML = '<em>awaiting onboarding: run the <code>hillclimb-onboard</code> skill.</em>';
+  } else {
+    const arrow = objective.direction === "maximize" ? "↑"
+                : objective.direction === "minimize" ? "↓" : "•";
+    const meta = `<span class="meta"><span class="arrow">${arrow}</span> ${esc((objective.direction || "-").toUpperCase())}${objective.target != null ? ' &nbsp;· TARGET ' + esc(fmt(objective.target)) : ''}</span>`;
+    $("objective-line").innerHTML = meta;
+  }
+  $("colophon-ts").textContent = fmtTs(updated);
+
+  const ideaOpen = ideas.filter(i => i.status === "open").length;
+  const runsVerified = runs.filter(r => r.verification).length;
+  const passes = runs.filter(r => r.verification && r.verification.status === "pass").length;
+
+  let bestCell = '';
+  if (best.score != null) {
+    const baseS = baseline.score;
+    let delta = "", dClass = "flat";
+    if (baseS != null && baseS !== 0) {
+      const d = (best.score - baseS) / Math.abs(baseS);
+      delta = "Δ vs baseline " + fmtPct(d);
+      const better = objective.direction === "minimize" ? best.score < baseS : best.score > baseS;
+      const worse  = objective.direction === "minimize" ? best.score > baseS : best.score < baseS;
+      dClass = better ? "better" : worse ? "worse" : "flat";
+    } else if (baseS == null) {
+      delta = "no baseline recorded";
+    }
+    bestCell = `
+      <div class="stat best">
+        <div class="label">Best ${esc(best.run_id || "")}</div>
+        <div class="value">${esc(fmt(best.score))}</div>
+        <div class="delta ${esc(dClass)}">${esc(delta)}</div>
+      </div>`;
+  } else {
+    bestCell = `
+      <div class="stat best">
+        <div class="label">Best</div>
+        <div class="value">-</div>
+        <div class="delta flat">no verified runs yet</div>
+      </div>`;
+  }
+
+  let targetBar = '';
+  if (objective.target != null && best.score != null && baseline.score != null) {
+    const minDir = objective.direction === "minimize";
+    const span = minDir ? (baseline.score - objective.target) : (objective.target - baseline.score);
+    const cur  = minDir ? (baseline.score - best.score)       : (best.score - baseline.score);
+    const pct = span === 0 ? 0 : Math.max(0, Math.min(1, cur / span));
+    targetBar = `
+      <div class="target-bar">
+        <span>BASELINE ${esc(fmt(baseline.score))}</span>
+        <span class="track"><span class="fill" style="width:${(pct*100).toFixed(1)}%"></span></span>
+        <span>TARGET ${esc(fmt(objective.target))}</span>
+        <span class="pct">${(pct*100).toFixed(0)}%</span>
+      </div>`;
+  }
+
+  $("stats").innerHTML = `
+    <div class="stat">
+      <div class="label">Ideas</div>
+      <div class="value">${ideaOpen}<span class="denom"> / ${ideas.length}</span></div>
+      <div class="sub">open / total</div>
+    </div>
+    <div class="stat">
+      <div class="label">Runs</div>
+      <div class="value">${runsVerified}<span class="denom"> / ${runs.length}</span></div>
+      <div class="sub">verified / total</div>
+    </div>
+    <div class="stat">
+      <div class="label">Passes</div>
+      <div class="value">${passes}</div>
+      <div class="sub">${runsVerified ? Math.round(passes / runsVerified * 100) + "%" : "-"} pass-rate</div>
+    </div>
+    ${bestCell}
+    ${targetBar}
+  `;
+
+  $("ideas-aside").textContent = ideas.length ? `${ideas.length} total` : "";
+  if (!ideas.length) {
+    $("ideas").innerHTML = '<li class="empty">no ideas yet: run the <code>hillclimb-onboard</code> or <code>hillclimb-brainstorm</code> skill.</li>';
+  } else {
+    const prRank = { high: 0, medium: 1, low: 2 };
+    const stRank = { in_progress: 0, open: 1, done: 2, abandoned: 3 };
+    const sorted = ideas.slice().sort((a, b) =>
+      (stRank[a.status] - stRank[b.status]) ||
+      (prRank[a.priority] - prRank[b.priority]) ||
+      a.id.localeCompare(b.id)
+    );
+    $("ideas").innerHTML = sorted.map(i => `
+      <li class="row">
+        <span class="id">${esc(i.id)}</span>
+        <span class="title">${esc(i.title || "(untitled)")}</span>
+        <span class="marks">
+          <span class="mark"><span class="br">[</span><span class="pr-${esc(i.priority)}">${esc(prAbbrev(i.priority))}</span><span class="br">]</span></span>
+          <span class="mark"><span class="br">[</span><span class="st-${esc(i.status)}">${esc(stAbbrev(i.status))}</span><span class="br">]</span></span>
+        </span>
+        ${i.description ? `<span class="desc">${esc(i.description)}</span>` : ""}
+      </li>
+    `).join("");
+  }
+
+  $("runs-aside").textContent = runs.length ? `${runs.length} total` : "";
+  if (!runs.length) {
+    $("runs").innerHTML = '<li class="empty">no runs yet: run the <code>hillclimb-execute</code> skill.</li>';
+  } else {
+    $("runs").innerHTML = runs.slice().reverse().map(r => {
+      const v = r.verification;
+      const status = v ? v.status : "unverified";
+      const improved = (v && best.run_id === r.id);
+      const verdict = v
+        ? `<span class="verdict v-${esc(status)}${improved ? ' improved' : ''}">${verdictGlyph(status)} ${status.toUpperCase()}${v.score != null ? `<span class="score">${esc(fmt(v.score))}</span>` : ""}</span>`
+        : `<span class="verdict v-unverified">○ UNVERIFIED</span>`;
+      return `
+        <li class="run ${esc(status)}">
+          <div class="run-head">
+            <span class="ids"><strong>${esc(r.id)}</strong> <span style="color:var(--faint)">·</span> for ${esc(r.idea_id)}</span>
+            ${verdict}
+          </div>
+          ${r.commit ? `<div class="run-line commit"><span class="lbl">commit</span><code>${esc((r.commit.sha || "").substring(0,7))}</code> ${esc((r.commit.message || "").split("\n")[0])}</div>` : ""}
+          ${r.plan    ? `<div class="run-line plan"><span class="lbl">plan</span>${esc(r.plan)}</div>` : ""}
+          ${r.summary ? `<div class="run-line"><span class="lbl">summary</span>${esc(r.summary)}</div>` : ""}
+          ${(r.actions && r.actions.length) ? `<div class="run-line actions"><span class="lbl">actions</span>${r.actions.map(a => `<span class="act">›</span> ${esc(a)}`).join('  ')}</div>` : ""}
+          ${(v && v.notes) ? `<div class="run-line notes"><span class="lbl">notes</span>${esc(v.notes)}</div>` : ""}
+        </li>`;
+    }).join("");
+  }
+
+  $("verifier").innerHTML = `
+    <div class="k">Command</div><div class="v">${verifier.command ? `<code>${esc(verifier.command)}</code>` : '<em style="color:var(--muted)">- (not configured)</em>'}</div>
+    <div class="k">Stop</div><div class="v">${esc(project.stop_criteria || "-")}</div>
+  `;
+
+  $("log-aside").textContent = log.length ? `${log.length} entries` : "";
+  if (!log.length) {
+    $("log").innerHTML = '<li class="empty">no activity yet.</li>';
+  } else {
+    $("log").innerHTML = log.slice(-80).reverse().map(e => `
+      <li class="log-row">
+        <span class="ts">${esc(fmtTs(e.ts))}</span>
+        <span class="kind k-${esc(e.kind || "note")}">${esc((e.kind || "note").toUpperCase())}</span>
+        <span class="summary">${esc(e.summary || "")}</span>
+      </li>`).join("");
+  }
+
+  drawChart();
+
+  // Batch reads to avoid one forced reflow per element.
+  const truncatable = Array.from(document.querySelectorAll('.ideas-section .row .desc, .runs-section .run-line:not(.notes)'));
+  truncatable.forEach(el => el.classList.add('expanded'));
+  const fullHs = truncatable.map(el => el.scrollHeight);
+  truncatable.forEach(el => el.classList.remove('expanded'));
+  const clipHs = truncatable.map(el => el.clientHeight);
+  truncatable.forEach((el, i) => {
+    if (fullHs[i] <= clipHs[i] + 4) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toggle';
+    btn.textContent = '[+]';
+    btn.setAttribute('aria-expanded', 'false');
+    btn.setAttribute('aria-label', 'expand');
+    btn.addEventListener('click', () => {
+      const open = el.classList.toggle('expanded');
+      btn.textContent = open ? '[−]' : '[+]';
+      btn.setAttribute('aria-expanded', String(open));
+      btn.setAttribute('aria-label', open ? 'collapse' : 'expand');
+    });
+    el.appendChild(btn);
+  });
+
+  function stAbbrev(s) { return ({ open: "OPEN", in_progress: "IN-PROG", done: "DONE", abandoned: "ABNDND" })[s] || (s || "-").toUpperCase(); }
+  function prAbbrev(p) { return ({ high: "HI", medium: "MD", low: "LO" })[p] || (p || "MD").toUpperCase(); }
+  function verdictGlyph(s) { return s === "pass" ? "✓" : s === "fail" ? "✗" : "-"; }
+
+  function drawChart() {
+    const cv = $("chart"), empty = $("chart-empty"), meta = $("chart-meta"), aside = $("chart-aside");
+
+    const pts = [];
+    runs.forEach((r, i) => {
+      if (r.verification) {
+        const s = r.verification.score;
+        pts.push({ x: i + 1, y: s != null ? Number(s) : null, id: r.id, status: r.verification.status });
+      }
+    });
+
+    // Draw the chart whenever we have either data points or a baseline/target frame.
+    const hasFrame = baseline.score != null || objective.target != null;
+    if (!pts.length && !hasFrame) {
+      cv.style.display = "none"; empty.style.display = "block";
+      empty.textContent = "awaiting first verification.";
+      meta.innerHTML = ""; aside.textContent = "";
+      return;
+    }
+
+    cv.style.display = "block"; empty.style.display = "none";
+
+    // Best-so-far envelope (only meaningful when we have data points).
+    const dir = objective.direction === "maximize" ? 1 : -1;
+    let bestSoFar = null;
+    const env = pts.map(p => {
+      if (p.status !== "pass" || p.y == null) return { x: p.x, y: bestSoFar };
+      if (bestSoFar == null) bestSoFar = p.y;
+      else if ((dir === 1 && p.y > bestSoFar) || (dir === -1 && p.y < bestSoFar)) bestSoFar = p.y;
+      return { x: p.x, y: bestSoFar };
+    });
+
+    // Aside summary: data-driven when present, otherwise reflect the empty frame.
+    const firstScored = pts.find(p => p.y != null);
+    const firstScore = firstScored ? firstScored.y : null;
+    const lastBest = bestSoFar;
+    if (lastBest != null && firstScore !== lastBest) {
+      const d = (lastBest - firstScore) / Math.abs(firstScore || 1);
+      aside.innerHTML = `first ${esc(fmt(firstScore))} → best <span style="color:var(--accent);font-weight:600">${esc(fmt(lastBest))}</span> (${fmtPct(d)})`;
+    } else if (pts.length) {
+      aside.textContent = `${pts.length} verified point${pts.length === 1 ? "" : "s"}`;
+    } else {
+      aside.textContent = "no verified runs yet";
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    const isNarrow = (window.innerWidth || 1100) <= 720;
+    const cssH_target = isNarrow ? 320 : 420;
+    cv.style.height = cssH_target + "px";
+    const cssW = cv.clientWidth || 1100, cssH = cssH_target;
+    cv.width = Math.floor(cssW * dpr); cv.height = Math.floor(cssH * dpr);
+    const ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    // Y-range covers verified scores plus baseline/target so all reference lines fit.
+    const ys = pts.filter(p => p.status === "pass" && p.y != null).map(p => p.y);
+    if (objective.target != null) ys.push(objective.target);
+    if (baseline.score != null) ys.push(baseline.score);
+    const yMinR = ys.length ? Math.min(...ys) : 0;
+    const yMaxR = ys.length ? Math.max(...ys) : 1;
+    const yspan = (yMaxR - yMinR) || Math.abs(yMaxR) || 1;
+    const pad = yspan * 0.14;
+    const yMin = yMinR - pad, yMax = yMaxR + pad;
+
+    // X-range: data when present, else a placeholder so px() is well-defined.
+    const xMin = pts.length ? pts[0].x : 1;
+    const xMax = pts.length === 0 ? 2
+               : pts.length === 1 ? pts[0].x + 1
+               : pts[pts.length - 1].x;
+
+    const M = { l: 78, r: 96, t: 22, b: 46 };
+    const px = (x) => M.l + (x - xMin) / Math.max(1e-9, xMax - xMin) * (cssW - M.l - M.r);
+    const py = (y) => cssH - M.b - (y - yMin) / Math.max(1e-9, yMax - yMin) * (cssH - M.t - M.b);
+
+    const cs = getComputedStyle(document.documentElement);
+    const v_ = (k) => cs.getPropertyValue(k).trim();
+    const C_RULE = v_("--rule"), C_RULE2 = v_("--rule-2");
+    const C_ACCENT = v_("--accent"), C_FAINT = v_("--faint");
+    const C_PASS = v_("--pass"), C_FAIL = v_("--fail"), C_MUTED = v_("--muted");
+    const C_BG = v_("--bg"), C_PANEL = v_("--panel");
+    const F_MONO = v_("--mono"), F_DISPLAY = v_("--display");
+
+    // Y-axis grid + labels.
+    ctx.font = "12px " + F_MONO;
+    ctx.fillStyle = C_MUTED; ctx.textBaseline = "middle";
+    const ticks = 5;
+    for (let i = 0; i <= ticks; i++) {
+      const yv = yMin + (yMax - yMin) * i / ticks;
+      const yp = py(yv);
+      ctx.strokeStyle = (i === 0 || i === ticks) ? C_RULE2 : C_RULE;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(M.l, yp + 0.5); ctx.lineTo(cssW - M.r, yp + 0.5); ctx.stroke();
+      ctx.fillStyle = C_MUTED; ctx.textAlign = "right";
+      ctx.fillText(fmt(yv, 3), M.l - 10, yp);
+    }
+
+    // Y-axis unit label (rotated).
+    ctx.save();
+    ctx.translate(20, cssH / 2); ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center"; ctx.fillStyle = C_FAINT;
+    ctx.font = "11px " + F_MONO;
+    ctx.fillText((objective.unit || "SCORE").toUpperCase(), 0, 0);
+    ctx.restore();
+
+    // Best-so-far envelope fill.
+    const envValid = env.filter(e => e.y != null);
+    if (envValid.length > 1) {
+      ctx.beginPath();
+      let prevY = null, started = false;
+      for (let i = 0; i < env.length; i++) {
+        const e = env[i]; if (e.y == null) continue;
+        const X = px(e.x), Y = py(e.y);
+        if (!started) { ctx.moveTo(X, cssH - M.b); ctx.lineTo(X, Y); started = true; }
+        else { if (prevY !== e.y) ctx.lineTo(X, py(prevY)); ctx.lineTo(X, Y); }
+        prevY = e.y;
+      }
+      const lastE = envValid[envValid.length - 1];
+      ctx.lineTo(px(lastE.x), cssH - M.b);
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, M.t, 0, cssH - M.b);
+      const acc = C_ACCENT;
+      function hexA(h, a) {
+        const m = h.replace('#', '');
+        const r = parseInt(m.substring(0, 2), 16), g = parseInt(m.substring(2, 4), 16), b = parseInt(m.substring(4, 6), 16);
+        return `rgba(${r},${g},${b},${a})`;
+      }
+      const accRGB = /^#([0-9a-f]{6})$/i.test(acc) ? acc : null;
+      if (accRGB) { grad.addColorStop(0, hexA(accRGB, 0.02)); grad.addColorStop(1, hexA(accRGB, 0.18)); }
+      else { grad.addColorStop(0, "rgba(0,0,0,0)"); grad.addColorStop(1, "rgba(240,168,48,0.18)"); }
+      ctx.fillStyle = grad; ctx.fill();
+    }
+
+    function drawReferenceLine(value, label, color, lineWidth, dash, rightGlyph) {
+      const y = py(value);
+      ctx.strokeStyle = color; ctx.lineWidth = lineWidth;
+      ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(M.l, y + 0.5); ctx.lineTo(cssW - M.r, y + 0.5); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = "bold 11px " + F_MONO;
+      ctx.fillStyle = color; ctx.textAlign = "left";
+      ctx.fillText(label + " " + fmt(value), M.l + 8, y - 10);
+      ctx.fillText(rightGlyph + fmt(value), cssW - M.r + 8, y);
+    }
+    if (baseline.score != null) {
+      drawReferenceLine(baseline.score, "BASELINE", C_MUTED, 1.2, [3, 5], "");
+    }
+    if (objective.target != null) {
+      drawReferenceLine(objective.target, "TARGET", C_ACCENT, 2, [8, 5], "▶ ");
+    }
+
+    // X-axis run-id ticks (only when we have data).
+    if (pts.length) {
+      ctx.font = "11px " + F_MONO;
+      const xTicks = Math.min(pts.length, 8);
+      ctx.fillStyle = C_MUTED; ctx.textAlign = "center";
+      for (let i = 0; i < xTicks; i++) {
+        const idx = Math.round(i * (pts.length - 1) / Math.max(1, xTicks - 1));
+        const p = pts[idx];
+        ctx.fillText(p.id, px(p.x), cssH - M.b + 20);
+      }
+    }
+
+    // Best-so-far envelope outline.
+    if (envValid.length > 1) {
+      ctx.strokeStyle = C_ACCENT; ctx.lineWidth = 3;
+      ctx.lineJoin = "round"; ctx.lineCap = "round";
+      ctx.beginPath();
+      let prevY = null;
+      for (let i = 0; i < env.length; i++) {
+        const e = env[i]; if (e.y == null) continue;
+        const X = px(e.x), Y = py(e.y);
+        if (prevY === null) ctx.moveTo(X, Y);
+        else { if (prevY !== e.y) ctx.lineTo(X, py(prevY)); ctx.lineTo(X, Y); }
+        prevY = e.y;
+      }
+      ctx.stroke();
+    }
+
+    // Per-run markers.
+    pts.forEach(p => {
+      const X = px(p.x);
+      const Y = p.y == null ? (cssH - M.b - 8) : Math.max(M.t, Math.min(cssH - M.b, py(p.y)));
+      if (p.status === "pass") {
+        const isBest = best && best.run_id === p.id;
+        if (!isBest) {
+          ctx.fillStyle = C_PASS;
+          ctx.beginPath(); ctx.arc(X, Y, 5, 0, Math.PI * 2); ctx.fill();
+        }
+      } else if (p.status === "fail") {
+        ctx.strokeStyle = C_FAIL; ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.arc(X, Y, 5, 0, Math.PI * 2); ctx.stroke();
+      } else {
+        ctx.strokeStyle = C_MUTED; ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(X - 5, Y); ctx.lineTo(X + 5, Y);
+        ctx.moveTo(X, Y - 5); ctx.lineTo(X, Y + 5);
+        ctx.stroke();
+      }
+    });
+
+    // Best-so-far highlight + label.
+    pts.forEach(p => {
+      if (p.status !== "pass" || !(best && best.run_id === p.id)) return;
+      const X = px(p.x), Y = py(p.y);
+      ctx.strokeStyle = C_ACCENT; ctx.lineWidth = 1; ctx.globalAlpha = 0.18;
+      ctx.beginPath(); ctx.arc(X, Y, 22, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 0.32;
+      ctx.beginPath(); ctx.arc(X, Y, 16, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = C_ACCENT;
+      ctx.beginPath(); ctx.arc(X, Y, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C_BG;
+      ctx.beginPath(); ctx.arc(X, Y, 2.5, 0, Math.PI * 2); ctx.fill();
+
+      const labelY = Y - 26;
+      const labelMain = "▲ " + p.id + "  " + fmt(p.y);
+      ctx.font = "bold 13px " + F_DISPLAY;
+      const tw = ctx.measureText(labelMain).width;
+      const sub = "BEST SO FAR";
+      ctx.font = "10px " + F_MONO;
+      const sw = ctx.measureText(sub).width;
+      const padX = 8;
+      const boxW = Math.max(tw, sw) + padX * 2;
+      const boxH = 30;
+      const flipLeft = X + 12 + boxW > cssW;
+      const boxX = flipLeft ? X - 12 - boxW : X + 12;
+      const boxY = labelY - 12;
+      ctx.strokeStyle = C_ACCENT; ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(flipLeft ? X - 6 : X + 6, Y - 2);
+      ctx.lineTo(flipLeft ? boxX + boxW : boxX, boxY + boxH / 2);
+      ctx.stroke();
+      ctx.fillStyle = C_PANEL;
+      ctx.fillRect(boxX, boxY, boxW, boxH);
+      ctx.strokeStyle = C_ACCENT; ctx.lineWidth = 1;
+      ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1);
+      ctx.font = "bold 13px " + F_DISPLAY;
+      ctx.fillStyle = C_ACCENT; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+      ctx.fillText(labelMain, boxX + padX, boxY + 13);
+      ctx.font = "9px " + F_MONO;
+      ctx.fillStyle = C_MUTED;
+      ctx.fillText(sub, boxX + padX, boxY + 25);
+      ctx.textBaseline = "middle";
+    });
+
+    // Legend - only show data-related swatches when we have data.
+    const legendBits = [];
+    if (pts.length) {
+      legendBits.push('<span><span class="swatch pass"></span>pass</span>');
+      legendBits.push('<span><span class="swatch fail"></span>fail</span>');
+      legendBits.push('<span><span class="swatch best"></span>best so far</span>');
+    }
+    if (objective.target != null) legendBits.push('<span><span class="swatch target"></span>target</span>');
+    if (baseline.score != null)   legendBits.push('<span><span class="swatch baseline"></span>baseline</span>');
+    meta.innerHTML = legendBits.join("");
+  }
+
+  let resizeTimer;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(drawChart, 120);
+  });
+})();
+</script>
+</body>
+</html>

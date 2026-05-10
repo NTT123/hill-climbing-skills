@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "hillclimb",
+  "description": "Iterative hill-climbing skills: scaffold a project, run execute → verify cycles, brainstorm when stuck, autopilot the loop. State lives in a self-rendering state.html dashboard.",
+  "author": {
+    "name": "ntt123"
+  },
+  "homepage": "https://github.com/NTT123/hill-climbing-skills",
+  "repository": "https://github.com/NTT123/hill-climbing-skills",
+  "license": "MIT",
+  "keywords": ["iteration", "optimization", "dashboard", "skills"]
+}
