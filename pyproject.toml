@@ -1,7 +1,0 @@
-[project]
-name = "hill-climbing-skills"
-version = "0.1.0"
-description = "Iterative hill-climbing workflow skills for Claude Code: onboard, execute, verify, brainstorm, plus an autopilot loop with git-checkpointed iterations."
-readme = "README.md"
-requires-python = ">=3.12"
-dependencies = []
