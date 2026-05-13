@@ -5,23 +5,13 @@ description: >
   up yet, then run the autonomous loop. Use when the user wants to set up
   and iterate in one invocation. Triggers: "run the hillclimb skill",
   "set up and iterate on X", "start a hill-climbing project end-to-end",
-  "scaffold and run hill-climbing". Forwards positional arguments
-  (iteration cap, `until target`, `forever`, `patient`) to `hillclimb-loop`
-  via the Skill tool's `args` parameter. Verbatim when the user supplies
-  them; otherwise translated from natural-language intent or onboarding
-  answers.
+  "scaffold and run hill-climbing".
 ---
 
 # hillclimb: onboard, then loop
 
 Thin orchestrator. Two phases, both delegated; this file owns no logic
 of its own.
-
-The user's args reach this skill via `$ARGUMENTS` (invoked as
-`/hillclimb forever`, `/hillclimb 20 patient`, etc.). Phase 2 forwards
-to `hillclimb-loop`, sometimes after translating natural-language
-intent or onboarding answers into the loop's grammar.
-
 ## Phase 1: Load state, onboard if needed
 
 ```bash
@@ -41,54 +31,42 @@ the bash block above to refresh `STATE_JSON`, then re-check the three
 conditions. If still not ready, the user bailed mid-onboarding;
 surface a one-line summary of what's missing and stop.
 
-Phase 2 also reads `project.stop_criteria` and `project.objective.target`
-from `STATE_JSON`. Treat absent or empty values as "no signal."
-
 ## Phase 2: Loop
 
-Decide the loop's args (rules below), then invoke the Skill tool with
-`args` set explicitly:
+Invoke the loop with no arguments:
 
 ```text
-Skill(skill="hillclimb-loop", args="<args string>")
+Skill(skill="hillclimb-loop")
 ```
 
-**Pass `args` whenever the user expressed any intent.** Without `args`,
-the Skill tool drops the user's request silently and the loop runs with
-defaults. For the genuine "use defaults" case, omit `args` or pass
-`args=""`.
-
 The loop owns its own pre-flight (git repo, dirty tree, branch
-creation), runs until a stop condition fires, and produces its own
-final report. This skill adds nothing after.
+creation), reads `project.objective.target` and `project.stop_criteria`
+from `state.py` to derive its own iteration cap and stop conditions,
+runs until a stop condition fires, and produces its own final report.
+This skill adds nothing after.
 
-### Deciding the args (first match wins)
+If the user expressed loop tuning intent in this invocation that is
+**not** already captured in `state.py`, persist it there before
+invoking the loop. Map phrasing to fields:
 
-1. **`$ARGUMENTS` non-empty.** Pass `args="$ARGUMENTS"`. Don't re-parse.
-2. **Natural-language intent in the invocation.** Map per the table
-   below (full grammar in `hillclimb-loop` skill's "Parse arguments").
-3. **Onboarding state.**
-   - `stop_criteria` semantically means "loop until manual interrupt"
-     (typical phrasings: "until I interrupt", "until user stops", "loop
-     forever", "no automatic stop") → `args="forever"`. Use semantic
-     judgment, not lexical matching: "user satisfied" or "manual
-     review" do NOT mean forever.
-   - `objective.target` is set AND `stop_criteria` doesn't pin an
-     iteration count → `args="until target"` (300 iter cap vs the
-     default 100; gives the target-met stop a real chance to fire).
-4. **Nothing.** Omit `args`. Loop runs with defaults.
+| User phrasing                                    | Field to set                                                                                                 |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| "iterate N times" / "loop N cycles" / "run N"    | `project.loop.max_iter` = `<int>`                                                                            |
+| "be patient" / "don't brainstorm too eagerly"    | `project.loop.patient` = `true`                                                                              |
+| "loop forever" / "until I interrupt" / "no stop" | `project.stop_criteria` = `"Loop runs until the user interrupts."` (semantic — the loop reads this freeform) |
+| "iterate until target"                           | confirm `project.objective.target` is set; do not change `stop_criteria` if it already pins a count          |
 
-| User says                                              | `args=` value |
-|--------------------------------------------------------|---------------|
-| "set up and iterate" / "run end-to-end" (no count)     | (omit; loop defaults: 100 iter, brainstorm at 3 stuck) |
-| "loop once" / "just one pass"                          | `"1"` |
-| "loop 5 times" / "do 5 iterations"                     | `"5"` |
-| "iterate until target"                                 | `"until target"` |
-| "no stopping" / "loop forever" / "until I interrupt"   | `"forever"` |
-| "be patient" / "don't brainstorm too eagerly"          | `"patient"` |
+Concrete persist call (one per field):
 
-Args compose. `args="20 patient"` raises STUCK_THRESHOLD over 20
-iterations; `args="forever patient"` is the unbounded version.
+```bash
+python3 "$STATE_PY" set "$STATE_HTML" project.loop.max_iter 5
+python3 "$STATE_PY" set "$STATE_HTML" project.loop.patient true
+```
+
+Pass JSON literals (`5`, `true`), not strings (`"5"`, `"true"`); the
+loop checks types, not truthiness. Don't translate intent into Skill
+arguments; the loop has no argument path. The full field schema is
+documented in `hillclimb-loop`'s "Read loop settings from state" section.
 
 ## Rules
 
@@ -99,4 +77,5 @@ iterations; `args="forever patient"` is the unbounded version.
 - **Don't add pre-flight here.** The loop has its own dirty-tree check
   and its own no-signal safeguard. Keeping this file thin is what
   guarantees the orchestrator and the loop can't drift apart.
-- **Don't gate Phase 2.** Forward args; let the loop run.
+- **Don't pass args to the loop.** All tuning lives in `state.py`. If
+  the user expresses new intent, persist to state, then dispatch.

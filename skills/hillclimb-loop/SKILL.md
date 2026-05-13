@@ -5,11 +5,7 @@ description: >
   the `hillclimb-execute` → `hillclimb-verify` → (when stuck)
   `hillclimb-brainstorm` skills, iteration after iteration, until a stop
   condition fires. Uses git for per-iteration checkpoints with automatic
-  rollback on failed verifications. Trigger on phrases like
-  "run the hillclimb-loop skill", "run the loop", "auto-iterate", "keep iterating",
-  "run 10 cycles", "iterate until target", "loop forever", "no stopping",
-  "until I interrupt", or any request for hands-off iteration on a
-  project that's already onboarded. Requires `.hillclimb/`
+  rollback on failed verifications. Requires `.hillclimb/`
   to exist (run the `hillclimb-onboard` skill first); on a dirty git
   tree, asks how to handle the pending changes (commit / stash / abort)
   before starting.
@@ -63,35 +59,69 @@ git rev-parse --verify hillclimb-loop >/dev/null 2>&1 \
 ROOT_SHA=$(git rev-parse HEAD)
 ```
 
-## Parse arguments
+## Read loop settings from state
 
-The argument string lives in `$ARGUMENTS` (the Skill tool's `args`
-parameter expands here). Empty `$ARGUMENTS` means use defaults below.
+All loop knobs are derived from `state.py`. The user expresses intent
+once during onboarding (or by editing state later via `state.py set`);
+the loop reads, never re-parses. **Ignore `$ARGUMENTS` entirely** — the
+orchestrator does not pass any, and a stray value should not change
+behavior.
 
-| Setting           | Default | Meaning |
-|-------------------|--------:|---------|
-| `MAX_ITER`        |  `100`  | Hard cap on iterations |
-| `STUCK_THRESHOLD` |    `3`  | Consecutive non-improvements before brainstorm fires |
-| `STALL_BUDGET`    |    `5`  | Consecutive non-improvements after a brainstorm before stop |
-| Stop on target    |  `true` | Stop early when `best.score` meets `objective.target` |
+```bash
+python3 "$STATE_PY" read "$STATE_HTML" | python3 -c "
+import json, sys
+p = json.load(sys.stdin)['project']
+print('target:', p['objective'].get('target'))
+print('stop_criteria:', p.get('stop_criteria'))
+print('loop:', json.dumps(p.get('loop') or {}))
+"
+```
 
-Examples (`$ARGUMENTS` value → effect):
+The fields that matter: `project.objective.target` (numeric or null),
+`project.stop_criteria` (freeform string from onboarding), `project.loop`
+(opt-in override block; onboarding never seeds it). Use **semantic
+judgment** on `stop_criteria`, not lexical matching. Phrases that mean
+forever: "until I interrupt", "no automatic stop", "loop forever",
+"until user stops". Phrases that do NOT: "user satisfied", "manual
+review", "stop on first regression". Below, `forever` stands for that
+resolved boolean.
 
-| Args | Effect |
-|---|---|
-| (none) | all defaults |
-| `5` | `MAX_ITER=5` |
-| `until target` | `MAX_ITER=300`, stop-on-target stays on |
-| `20 patient` | `MAX_ITER=20`, `STUCK_THRESHOLD=5` |
-| `forever` | `MAX_ITER=100000`, `STALL_BUDGET=100000`. Stops only on target met, out-of-ideas after brainstorm, no-signal diagnosis, or user interrupt. Combines with `patient`. |
+| Setting           | Default |
+|-------------------|--------:|
+| `MAX_ITER`        |  `100`  |
+| `STUCK_THRESHOLD` |    `3`  |
+| `STALL_BUDGET`    |    `5`  |
 
-Refuse non-positive `MAX_ITER`/`STUCK_THRESHOLD` and unrecognized
-tokens with a clear error listing the offenders. Valid tokens: positive
-integers, `until target` (two-word phrase), `forever`, `patient`.
-State a one-line plan to the user before starting (`"Running up to 100
-iterations on hillclimb-loop branch; brainstorm after 3 stuck rounds, stop
-on target."`) so they can interrupt early if it's wrong. For `forever`,
-say so explicitly: `"Running until target / out-of-ideas / your Ctrl-C."`
+Resolution (first match wins):
+
+```
+MAX_ITER         = loop.max_iter         if set
+                 | 100000                if forever
+                 | 300                   if target is set
+                 | 100
+
+STUCK_THRESHOLD  = loop.stuck_threshold  if set
+                 | 5                     if loop.patient is JSON true
+                 | 3
+
+STALL_BUDGET     = loop.stall_budget     if set
+                 | 100000                if forever    # effectively off
+                 | 5
+```
+
+Target-met always stops the loop when `target` is set — Phase E #1 has no
+user-facing override. To turn that stop off, clear `project.objective.target`.
+`STUCK_THRESHOLD` is intentionally unaffected by "forever": brainstorms
+remain the loop's escape hatch even when no iteration cap is in play.
+
+State a one-line plan to the user before starting, derived from the
+resolved knobs, so they can interrupt early if it's wrong. Examples:
+
+- `TARGET=2.6, STOP=interrupt`: *"Running on hillclimb-loop branch until best score reaches 2.6 or you interrupt; brainstorm after 3 stuck rounds."*
+- `TARGET unset, STOP=interrupt`: *"Running on hillclimb-loop branch until you interrupt; brainstorm after 3 stuck rounds (stall budget disabled under forever)."*
+- `TARGET=0.05, STOP=target met`: *"Running up to 300 iterations on hillclimb-loop branch; stop on target met; brainstorm after 3 stuck rounds, stop after 5 stalled rounds following a brainstorm."*
+- `TARGET unset, STOP="user satisfied"`: *"Running up to 100 iterations on hillclimb-loop branch (no target set, no forever signal); brainstorm after 3 stuck rounds, stop after 5 stalled rounds following a brainstorm."*
+- `TARGET=2.6, STOP=interrupt, loop.max_iter=20`: *"Running up to 20 iterations on hillclimb-loop branch (explicit cap overrides 'forever') or until best score reaches 2.6; brainstorm after 3 stuck rounds."*
 
 ## Subagent prompt template
 
