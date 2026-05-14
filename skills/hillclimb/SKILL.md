@@ -55,6 +55,7 @@ invoking the loop. Map phrasing to fields:
 | "be patient" / "don't brainstorm too eagerly"    | `project.loop.patient` = `true`                                                                              |
 | "loop forever" / "until I interrupt" / "no stop" | `project.stop_criteria` = `"Loop runs until the user interrupts."` (semantic — the loop reads this freeform) |
 | "iterate until target"                           | confirm `project.objective.target` is set; do not change `stop_criteria` if it already pins a count          |
+| "lazy" / "keep every pass" / "don't roll back passes" | `project.loop.greedy` = `false`                                                                            |
 
 Concrete persist call (one per field):
 

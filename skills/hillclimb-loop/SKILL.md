@@ -91,6 +91,7 @@ resolved boolean.
 | `MAX_ITER`        |  `100`  |
 | `STUCK_THRESHOLD` |    `3`  |
 | `STALL_BUDGET`    |    `5`  |
+| `GREEDY`          |  `yes`  |
 
 Resolution (first match wins):
 
@@ -107,7 +108,17 @@ STUCK_THRESHOLD  = loop.stuck_threshold  if set
 STALL_BUDGET     = loop.stall_budget     if set
                  | 100000                if forever    # effectively off
                  | 5
+
+GREEDY           = "no" if loop.greedy is JSON false
+                 | "yes"
 ```
+
+`GREEDY="yes"` (default, **greedy**): only verified runs that improve
+`best` are kept in HEAD; other passing runs are committed then rolled
+back. `GREEDY="no"` (**lazy**, opt in with `loop.greedy=false`): every
+passing run's code is kept. Only Phase D's `pass` branch differs; the
+`best` update is unchanged. See WORKFLOW.md section 9.14 for the design
+rationale.
 
 Target-met always stops the loop when `target` is set — Phase E #1 has no
 user-facing override. To turn that stop off, clear `project.objective.target`.
@@ -122,6 +133,7 @@ resolved knobs, so they can interrupt early if it's wrong. Examples:
 - `TARGET=0.05, STOP=target met`: *"Running up to 300 iterations on hillclimb-loop branch; stop on target met; brainstorm after 3 stuck rounds, stop after 5 stalled rounds following a brainstorm."*
 - `TARGET unset, STOP="user satisfied"`: *"Running up to 100 iterations on hillclimb-loop branch (no target set, no forever signal); brainstorm after 3 stuck rounds, stop after 5 stalled rounds following a brainstorm."*
 - `TARGET=2.6, STOP=interrupt, loop.max_iter=20`: *"Running up to 20 iterations on hillclimb-loop branch (explicit cap overrides 'forever') or until best score reaches 2.6; brainstorm after 3 stuck rounds."*
+- `TARGET=2.6, STOP=interrupt, loop.greedy=false`: *"Running on hillclimb-loop branch until best score reaches 2.6 or you interrupt; lazy mode (greedy disabled) — every passing run's code is kept, HEAD walks sideways across plateaus; brainstorm after 3 stuck rounds."*
 
 ## Subagent prompt template
 
@@ -195,9 +207,14 @@ IMPROVED=$(python3 "$STATE_PY" read "$STATE_HTML" \
 ```bash
 case "$STATUS" in
   pass)
+    ROLLBACK=no
     if [ "$IMPROVED" = "yes" ]; then
       MSG="hillclimb-iter-${ITER_N}: pass score=${SCORE} (new best, ${RUN_ID})"
       NO_IMPROVE=0
+    elif [ "$GREEDY" = "yes" ]; then
+      MSG="hillclimb-iter-${ITER_N}: pass score=${SCORE} (no improvement, rolling back, ${RUN_ID})"
+      NO_IMPROVE=$((NO_IMPROVE + 1))
+      ROLLBACK=yes
     else
       MSG="hillclimb-iter-${ITER_N}: pass score=${SCORE} (no improvement, ${RUN_ID})"
       NO_IMPROVE=$((NO_IMPROVE + 1))
@@ -205,6 +222,10 @@ case "$STATUS" in
     git add -A && git commit -m "$MSG" --allow-empty
     COMMIT_SHA=$(git rev-parse HEAD)
     python3 "$STATE_PY" set-commit "$STATE_HTML" "$RUN_ID" "$COMMIT_SHA" "$MSG"
+    if [ "$ROLLBACK" = "yes" ]; then
+      git checkout "$PRE_SHA" -- . ':!.hillclimb/state.html'
+      git commit -m "hillclimb-iter-${ITER_N}: rolled back code to PRE_SHA (greedy, ${RUN_ID})" --allow-empty
+    fi
     ;;
   fail|inconclusive)
     git checkout "$PRE_SHA" -- . ':!.hillclimb/state.html'
@@ -216,24 +237,36 @@ esac
 **Why this exact rollback form** (load-bearing, do not "simplify" to
 `git reset --hard`): the dashboard's value comes from showing every
 attempt, including failures; chart, log, and brainstorm diagnosis all
-depend on the failed-run record in `state.html`. `state.html` is
+depend on the run record in `state.html`. `state.html` is
 gitignored, so git operations don't touch it; the
 `:!.hillclimb/state.html` pathspec is belt-and-suspenders should the
 gitignore ever fail to apply (`git reset --hard` would still clobber it
 in that case). The checkout form reverts every tracked path *except*
 state.html in one operation, no temp files, no race window.
 
-**No `git add -A` in the rollback branch.** The checkout already updated
-the index for tracked paths, so the marker commit's tree equals
-PRE_SHA's tree, an empty commit on top of HEAD. Adding `git add -A`
-would promote the iteration's untracked artifacts (logs, checkpoints)
-into tracked files baked into next iteration's PRE_SHA. Without it,
+**Why greedy is commit-then-rollback, not rollback-only.** The pass-
+but-no-improvement run's code is real, verified work; we want
+`state.py rollback-to <R-id>` to be able to restore it for replay. The
+orchestrator commits the run's tree (so `set-commit` has a real SHA
+pointing at the run's actual code), then reverts the working tree with
+a marker commit so the next iteration starts from PRE_SHA. The cost is
+two commits per no-improvement greedy iteration instead of one (the
+run's tree, then a revert marker); the benefit is replay parity with
+lazy mode.
+
+**No `git add -A` on the rollback marker commits.** The checkout
+updates the index for tracked paths to PRE_SHA's tree, so each marker
+commit's tree equals PRE_SHA's tree. Adding `git add -A` here would
+promote the iteration's untracked artifacts (logs, checkpoints) into
+tracked files baked into next iteration's PRE_SHA. Without it,
 untracked files stay untracked in the working tree (the loop never
 `git clean`s, those are usually what the user wants to inspect).
 
-`--allow-empty` on the pass commit covers the case where the iteration's
-only on-disk change was state.html (gitignored, so `git add -A` adds
-nothing); on the rollback commit it covers the always-empty marker.
+`--allow-empty` on all three commit sites (the pass commit, the
+fail/inconclusive marker, the greedy revert marker) guards the case
+where the iteration's only on-disk change was state.html — gitignored
+and excluded by the pathspec, so both `git add -A` and the
+post-checkout index can leave nothing to commit.
 
 ### Phase E: Stop conditions
 

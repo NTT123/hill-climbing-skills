@@ -101,6 +101,10 @@ python3 .hillclimb/state.py rollback-to .hillclimb/state.html R-005
 git restore .   # back to where you were
 ```
 
+Works for every verified pass under both default greedy and lazy
+(`project.loop.greedy = false`) modes; the pass commit is kept
+reachable in either case.
+
 Manual `hillclimb-execute` skill + `hillclimb-verify` skill runs (outside the
 loop) don't auto-record commits, so `rollback-to` will say `no commit
 recorded for <R-id>`. To opt in: commit the working tree after each

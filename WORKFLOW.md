@@ -37,7 +37,7 @@ the verifier**. A failed-but-honest run is a useful data point. A
 passed-but-cheated run is pollution. `hillclimb-execute/SKILL.md`'s First
 principle enumerates the anti-patterns; `hillclimb-brainstorm` mirrors the
 prohibition so suggested ideas can't include verifier-loosening. See
-[§ 9.13 No spec gaming](#913-no-spec-gaming).
+[section 9.13 No spec gaming](#913-no-spec-gaming).
 
 ---
 
@@ -186,12 +186,14 @@ never edits code or runs the verifier itself; it spawns a fresh
 template (`/<skill>` + no-network-git + reply JSON contract), parses
 replies, makes the keep-or-roll-back decision, and updates counters.
 
-Per-iteration **git checkpoints** with rollback on failure: on
-`fail`/`inconclusive`, `git checkout PRE_SHA -- . ':!.hillclimb/state.html'`
-reverts tracked code but preserves the failed-run record in the dashboard
-(see § 9.14). Stops on first match of: target met, max iterations,
-stalled after brainstorm, out of ideas after brainstorm produced none,
-`no-signal` brainstorm diagnosis.
+Per-iteration **git checkpoints** with rollback: `git checkout PRE_SHA
+-- . ':!.hillclimb/state.html'` reverts tracked code but preserves the
+run record in the dashboard. Fires on `fail`/`inconclusive` always,
+and on `pass + !improved` under the default **greedy** mode (opt out
+with `project.loop.greedy = false` for **lazy** mode; see section 9.14).
+Stops on first match of: target met, max iterations, stalled after
+brainstorm, out of ideas after brainstorm produced none, `no-signal`
+brainstorm diagnosis.
 
 ### 4.6 `hillclimb` skill (end-to-end orchestrator)
 
@@ -345,7 +347,7 @@ Notable design choices:
 - `set` walks dotted paths through dicts only. It **refuses** to index
   into lists and exits with a clear error. To mutate an item inside a
   list, read the full state, edit in your head, write the whole list
-  back. (See § 9.8.)
+  back. (See section 9.8.)
 - `start-run` enforces the in-progress invariant atomically. No two open
   runs.
 - `verify-run` does *all* downstream work in one call (attach
@@ -522,7 +524,7 @@ projects this skill targets.
 
 ### 9.3 `state.html` is HTML-with-JSON-island, not split
 
-See § 5.2 for the rationale. One caveat: the "dashboard cannot drift
+See section 5.2 for the rationale. One caveat: the "dashboard cannot drift
 from the data" claim holds *only if the JSON island parses*. A malformed
 island produces a blank page rather than a visibly-wrong one.
 
@@ -647,7 +649,7 @@ The cost of *not* writing this down is asymmetric: when implicit, edge
 cases erode the rule gradually and the dashboard's signal silently rots.
 When explicit and internalized, the same edge cases produce a
 stop-and-ask response. ~50 lines of prompt buy the entire project's
-credibility. This is the only § 9 entry that's about agent behavior
+credibility. This is the only section 9 entry that's about agent behavior
 rather than mechanism, but it's the one that makes the mechanism worth
 using.
 
@@ -680,6 +682,19 @@ apply. The full mechanism (selective checkout, no `git add -A`
 follow-up, why state.html is excluded) lives in
 `hillclimb-loop/SKILL.md` Phase D. This is the only asymmetry of its
 kind in the system.
+
+**Greedy vs lazy: when does HEAD ratchet.** Default is **greedy**: only
+verified runs that strictly improve `best` advance HEAD; passing-but-
+no-improvement runs are committed (so `set-commit` and `rollback-to`
+still work) and then the working tree is immediately reverted to
+PRE_SHA with a marker commit. This preserves the invariant *HEAD's
+tree equals `best.run_id`'s tree* (modulo revert marker commits whose
+tree still equals PRE_SHA's tree) at the cost of one extra commit per
+no-improvement iteration. Opt out with `project.loop.greedy = false`
+for **lazy** mode: every passing run's code is committed and kept, so
+HEAD walks sideways across plateaus and `best.run_id`'s tree may sit
+several commits behind HEAD. The two modes share Phase D's rollback
+form and pathspec; only the `pass` branch differs.
 
 **Run-to-commit linking.** The `hillclimb-loop` skill records each
 pass commit's SHA on its run record (`run.commit = {sha, message}`)
@@ -808,3 +823,7 @@ it's healthy when it isn't poisons future decisions.
 - **General-purpose subagent**: a Claude sub-process spawned via the
   `Agent` tool with `subagent_type: "general-purpose"`. Brainstorm uses
   one for diversification; `hillclimb-loop` skill uses one per phase.
+- **Greedy mode** (default): only `best`-improving runs ratchet HEAD;
+  others are committed then reverted to PRE_SHA. See section 9.14.
+- **Lazy mode** (`project.loop.greedy = false`): every passing run is
+  kept in HEAD. See section 9.14.
