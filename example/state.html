@@ -256,6 +256,13 @@
     border-top: 2px dashed var(--accent);
   }
   .swatch.baseline { border-top-color: var(--muted); border-top-style: dashed; border-top-width: 1.5px; }
+  .swatch.clip {
+    width: 0; height: 0;
+    background: transparent; border-radius: 0; box-shadow: none;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 9px solid var(--muted);
+  }
 
   /* ============= STATS GRID ============= */
   .stats {
@@ -1862,12 +1869,26 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
 
-    // Y-range covers verified scores plus baseline/target so all reference lines fit.
-    const ys = pts.filter(p => p.status === "pass" && p.y != null).map(p => p.y);
-    if (objective.target != null) ys.push(objective.target);
-    if (baseline.score != null) ys.push(baseline.score);
-    const yMinR = ys.length ? Math.min(...ys) : 0;
-    const yMaxR = ys.length ? Math.max(...ys) : 1;
+    // Y-range: when both baseline and target are set, anchor on that band so a
+    // far outlier can't compress it; pass scores within 1 band-width still
+    // expand the range. Far outliers fall outside [yMin,yMax] and the marker
+    // loop below clamps them to the chart edge. Without a band, fall back to
+    // a data-driven range so the chart still scales sensibly.
+    const passYs = pts.filter(p => p.status === "pass" && p.y != null).map(p => p.y);
+    let yMinR, yMaxR;
+    if (baseline.score != null && objective.target != null) {
+      const refLo = Math.min(baseline.score, objective.target);
+      const refHi = Math.max(baseline.score, objective.target);
+      const band = (refHi - refLo) || Math.abs(refHi) || 1;
+      const inBand = passYs.filter(y => y >= refLo - band && y <= refHi + band);
+      yMinR = Math.min(refLo, ...inBand);
+      yMaxR = Math.max(refHi, ...inBand);
+    } else {
+      if (objective.target != null) passYs.push(objective.target);
+      if (baseline.score != null) passYs.push(baseline.score);
+      yMinR = passYs.length ? Math.min(...passYs) : 0;
+      yMaxR = passYs.length ? Math.max(...passYs) : 1;
+    }
     const yspan = (yMaxR - yMinR) || Math.abs(yMaxR) || 1;
     const pad = yspan * 0.14;
     const yMin = yMinR - pad, yMax = yMaxR + pad;
@@ -1987,11 +2008,35 @@
     }
 
     // Per-run markers.
+    let hasClipped = false;
     pts.forEach(p => {
       const X = px(p.x);
+      const clippedDown = p.y != null && p.y < yMin;
+      const clippedUp   = p.y != null && p.y > yMax;
       const Y = p.y == null ? (cssH - M.b - 8) : Math.max(M.t, Math.min(cssH - M.b, py(p.y)));
+      const isBest = best && best.run_id === p.id;
+      if (clippedDown || clippedUp) {
+        // Off-chart outlier: a chevron at the chart edge points outward toward
+        // the real score so the user sees the run exists but knows it's far
+        // outside the band. Color tracks pass/fail/best so status is still
+        // legible. Best-so-far highlight is suppressed below to avoid drawing
+        // rings/label on top of the chevron.
+        hasClipped = true;
+        const color = isBest ? C_ACCENT
+                    : p.status === "fail" ? C_FAIL
+                    : p.status === "pass" ? C_PASS : C_MUTED;
+        const filled = p.status !== "fail";
+        const w = 7, h = clippedDown ? -7 : 7;
+        ctx.beginPath();
+        ctx.moveTo(X, Y);
+        ctx.lineTo(X - w, Y + h);
+        ctx.lineTo(X + w, Y + h);
+        ctx.closePath();
+        if (filled) { ctx.fillStyle = color; ctx.fill(); }
+        else        { ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.stroke(); }
+        return;
+      }
       if (p.status === "pass") {
-        const isBest = best && best.run_id === p.id;
         if (!isBest) {
           ctx.fillStyle = C_PASS;
           ctx.beginPath(); ctx.arc(X, Y, 5, 0, Math.PI * 2); ctx.fill();
@@ -2011,6 +2056,7 @@
     // Best-so-far highlight + label.
     pts.forEach(p => {
       if (p.status !== "pass" || !(best && best.run_id === p.id)) return;
+      if (p.y != null && (p.y < yMin || p.y > yMax)) return;
       const X = px(p.x), Y = py(p.y);
       ctx.strokeStyle = C_ACCENT; ctx.lineWidth = 1; ctx.globalAlpha = 0.18;
       ctx.beginPath(); ctx.arc(X, Y, 22, 0, Math.PI * 2); ctx.stroke();
@@ -2059,6 +2105,7 @@
       legendBits.push('<span><span class="swatch pass"></span>pass</span>');
       legendBits.push('<span><span class="swatch fail"></span>fail</span>');
       legendBits.push('<span><span class="swatch best"></span>best so far</span>');
+      if (hasClipped) legendBits.push('<span><span class="swatch clip"></span>off-chart</span>');
     }
     if (objective.target != null) legendBits.push('<span><span class="swatch target"></span>target</span>');
     if (baseline.score != null)   legendBits.push('<span><span class="swatch baseline"></span>baseline</span>');
